@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>动态表创建系统</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .column-row {
+            border: 1px solid #eee;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            position: relative;
+        }
+        
+        .column-row .remove-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #ff4444;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .btn:hover {
+            background: #0056b3;
+        }
+        
+        .btn-success {
+            background: #28a745;
+        }
+        
+        .btn-success:hover {
+            background: #1e7e34;
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+        }
+        
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        
+        .table-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .table-item {
+            border: 1px solid #eee;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .columns-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+        }
+        
+        .alert-success {
+            color: #155724;
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        
+        .alert-danger {
+            color: #721c24;
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <h1>数据库表管理系统</h1>
+        
+        <!-- 消息提示 -->
+        <div id="message"></div>
+        
+        <!-- 创建表单 -->
+        <div class="container">
+            <h2>创建新表</h2>
+            <form id="createTableForm">
+                <div class="form-group">
+                    <label for="tableName">表名:</label>
+                    <input type="text" id="tableName" name="tableName" required 
+                           pattern="[a-zA-Z_][a-zA-Z0-9_]*" 
+                           title="表名必须以字母或下划线开头，只能包含字母、数字和下划线">
+                </div>
+                
+                <div class="form-group">
+                    <label for="tableComment">表注释:</label>
+                    <textarea id="tableComment" name="tableComment" rows="2" 
+                              placeholder="描述这个表的用途"></textarea>
+                </div>
+                
+                <h3>字段定义</h3>
+                <div id="columnsContainer">
+                    <!-- 字段将动态添加到这里 -->
+                </div>
+                
+                <button type="button" class="btn btn-success" onclick="addColumn()">添加字段</button>
+                <button type="submit" class="btn">创建表</button>
+            </form>
+        </div>
+        
+        <!-- 现有表管理 -->
+        <div class="container">
+            <h2>现有表管理</h2>
+            <button class="btn" onclick="loadTables()">刷新表列表</button>
+            
+            <div id="tablesList" class="table-list">
+                <!-- 表列表将显示在这里 -->
+            </div>
+        </div>
+        
+        <!-- 给现有表添加字段 -->
+        <div class="container" id="addColumnSection" style="display: none;">
+            <h2>给表添加字段</h2>
+            <p>当前操作表: <strong id="currentTableName"></strong></p>
+            
+            <form id="addColumnForm">
+                <div class="columns-grid">
+                    <div class="form-group">
+                        <label for="newColumnName">字段名:</label>
+                        <input type="text" id="newColumnName" name="columnName" required 
+                               pattern="[a-zA-Z_][a-zA-Z0-9_]*">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="newColumnType">数据类型:</label>
+                        <select id="newColumnType" name="dataType" required>
+                            <option value="">选择类型</option>
+                            <option value="INT">INT - 整数</option>
+                            <option value="BIGINT">BIGINT - 大整数</option>
+                            <option value="VARCHAR">VARCHAR - 变长字符串</option>
+                            <option value="TEXT">TEXT - 长文本</option>
+                            <option value="DECIMAL">DECIMAL - 小数</option>
+                            <option value="DATE">DATE - 日期</option>
+                            <option value="DATETIME">DATETIME - 日期时间</option>
+                            <option value="BOOLEAN">BOOLEAN - 布尔值</option>
+                            <option value="JSON">JSON - JSON数据</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="newColumnLength">长度:</label>
+                        <input type="number" id="newColumnLength" name="length" 
+                               placeholder="仅VARCHAR/CHAR需要">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="newColumnNullable">允许NULL:</label>
+                        <select id="newColumnNullable" name="isNullable">
+                            <option value="YES">是</option>
+                            <option value="NO">否</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="newColumnDefault">默认值:</label>
+                        <input type="text" id="newColumnDefault" name="defaultValue" 
+                               placeholder="可选">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="newColumnComment">字段注释:</label>
+                        <input type="text" id="newColumnComment" name="comment" 
+                               placeholder="描述字段用途">
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn btn-success">添加字段</button>
+                <button type="button" class="btn btn-danger" onclick="hideAddColumnSection()">取消</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3000/api/tables'
+        let currentTable = ''
+
+        // 数据类型配置
+        const dataTypes = [
+            { value: 'INT', label: 'INT - 整数', hasLength: false },
+            { value: 'BIGINT', label: 'BIGINT - 大整数', hasLength: false },
+            { value: 'VARCHAR', label: 'VARCHAR - 变长字符串', hasLength: true },
+            { value: 'TEXT', label: 'TEXT - 长文本', hasLength: false },
+            { value: 'DECIMAL', label: 'DECIMAL - 小数', hasLength: false },
+            { value: 'DATE', label: 'DATE - 日期', hasLength: false },
+            { value: 'DATETIME', label: 'DATETIME - 日期时间', hasLength: false },
+            { value: 'BOOLEAN', label: 'BOOLEAN - 布尔值', hasLength: false },
+            { value: 'JSON', label: 'JSON - JSON数据', hasLength: false }
+        ]
+
+        // 显示消息
+        function showMessage(message, type = 'success') {
+            const messageDiv = document.getElementById('message')
+            messageDiv.innerHTML = `<div class="alert alert-${type}">${message}</div>`
+            setTimeout(() => {
+                messageDiv.innerHTML = ''
+            }, 5000)
+        }
+
+        // 添加字段到表单
+        function addColumn() {
+            const container = document.getElementById('columnsContainer')
+            const columnIndex = container.children.length
+            
+            const columnDiv = document.createElement('div')
+            columnDiv.className = 'column-row'
+            columnDiv.innerHTML = `
+                <button type="button" class="remove-btn" onclick="removeColumn(this)">删除</button>
+                
+                <div class="columns-grid">
+                    <div class="form-group">
+                        <label>字段名:</label>
+                        <input type="text" name="columns[${columnIndex}][name]" required 
+                               pattern="[a-zA-Z_][a-zA-Z0-9_]*" 
+                               placeholder="字段名">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>数据类型:</label>
+                        <select name="columns[${columnIndex}][type]" required onchange="handleTypeChange(this)">
+                            <option value="">选择类型</option>
+                            ${dataTypes.map(type => 
+                                `<option value="${type.value}" data-has-length="${type.hasLength}">${type.label}</option>`
+                            ).join('')}
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>长度:</label>
+                        <input type="number" name="columns[${columnIndex}][length]" 
+                               placeholder="仅部分类型需要" disabled>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>允许NULL:</label>
+                        <select name="columns[${columnIndex}][nullable]">
+                            <option value="true">是</option>
+                            <option value="false">否</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>默认值:</label>
+                        <input type="text" name="columns[${columnIndex}][defaultValue]" 
+                               placeholder="可选">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>字段注释:</label>
+                        <input type="text" name="columns[${columnIndex}][comment]" 
+                               placeholder="描述字段用途">
+                    </div>
+                </div>
+            `
+            
+            container.appendChild(columnDiv)
+        }
+
+        // 处理数据类型变化
+        function handleTypeChange(select) {
+            const option = select.options[select.selectedIndex]
+            const hasLength = option.getAttribute('data-has-length') === 'true'
+            const lengthInput = select.closest('.column-row').querySelector('input[name*="[length]"]')
+            
+            lengthInput.disabled = !hasLength
+            if (!hasLength) {
+                lengthInput.value = ''
+            }
+        }
+
+        // 删除字段
+        function removeColumn(button) {
+            button.parentElement.remove()
+        }
+
+        // 创建表
+        document.getElementById('createTableForm').addEventListener('submit', async function(e) {
+            e.preventDefault()
+            
+            const formData = new FormData(this)
+            const tableName = formData.get('tableName')
+            const tableComment = formData.get('tableComment')
+            
+            // 收集字段信息
+            const columns = []
+            const columnRows = document.querySelectorAll('.column-row')
+            
+            columnRows.forEach(row => {
+                const inputs = row.querySelectorAll('input, select')
+                const column = {}
+                
+                inputs.forEach(input => {
+                    const match = input.name.match(/columns\[\d+\]\[(\w+)\]/)
+                    if (match) {
+                        const key = match[1]
+                        const value = input.type === 'checkbox' ? input.checked : input.value
+                        if (key === 'nullable') {
+                            column[key] = value === 'true'
+                        } else {
+                            column[key] = value
+                        }
+                    }
+                })
+                
+                if (column.name && column.type) {
+                    columns.push(column)
+                }
+            })
+            
+            if (columns.length === 0) {
+                showMessage('请至少添加一个字段', 'danger')
+                return
+            }
+            
+            try {
+                const response = await axios.post(API_BASE, {
+                    tableName,
+                    tableComment,
+                    columns
+                })
+                
+                showMessage('表创建成功!')
+                this.reset()
+                document.getElementById('columnsContainer').innerHTML = ''
+                loadTables()
+            } catch (error) {
+                showMessage('创建失败: ' + (error.response?.data?.message || error.message), 'danger')
+            }
+        })
+
+        // 加载表列表
+        async function loadTables() {
+            try {
+                const response = await axios.get(API_BASE)
+                const tables = response.data.data
+                
+                let html = ''
+                if (tables.length === 0) {
+                    html = '<p>暂无表数据</p>'
+                } else {
+                    tables.forEach(table => {
+                        html += `
+                            <div class="table-item">
+                                <div>
+                                    <strong>${table.tableName}</strong>
+                                    ${table.tableComment ? `<br><small>${table.tableComment}</small>` : ''}
+                                </div>
+                                <div>
+                                    <button class="btn" onclick="viewTableStructure('${table.tableName}')">查看结构</button>
+                                    <button class="btn btn-success" onclick="showAddColumnSection('${table.tableName}')">添加字段</button>
+                                    <button class="btn btn-danger" onclick="deleteTable('${table.tableName}')">删除表</button>
+                                </div>
+                            </div>
+                        `
+                    })
+                }
+                
+                document.getElementById('tablesList').innerHTML = html
+            } catch (error) {
+                showMessage('加载表列表失败: ' + (error.response?.data?.message || error.message), 'danger')
+            }
+        }
+
+        // 查看表结构
+        async function viewTableStructure(tableName) {
+            try {
+                const response = await axios.get(`${API_BASE}/${tableName}/structure`)
+                const columns = response.data.data
+                
+                let html = `<h3>${tableName} 表结构</h3><table style="width:100%; border-collapse:collapse; margin-top:10px;">`
+                html += `
+                    <tr style="background:#f5f5f5;">
+                        <th style="border:1px solid #ddd; padding:8px;">字段名</th>
+                        <th style="border:1px solid #ddd; padding:8px;">类型</th>
+                        <th style="border:1px solid #ddd; padding:8px;">允许NULL</th>
+                        <th style="border:1px solid #ddd; padding:8px;">默认值</th>
+                        <th style="border:1px solid #ddd; padding:8px;">备注</th>
+                    </tr>
+                `
+                
+                columns.forEach(column => {
+                    html += `
+                        <tr>
+                            <td style="border:1px solid #ddd; padding:8px;">${column.columnName}</td>
+                            <td style="border:1px solid #ddd; padding:8px;">${column.dataType}${column.maxLength ? `(${column.maxLength})` : ''}</td>
+                            <td style="border:1px solid #ddd; padding:8px;">${column.isNullable}</td>
+                            <td style="border:1px solid #ddd; padding:8px;">${column.defaultValue || ''}</td>
+                            <td style="border:1px solid #ddd; padding:8px;">${column.comment || ''}</td>
+                        </tr>
+                    `
+                })
+                
+                html += '</table>'
+                
+                // 创建模态窗口显示结构
+                const modal = document.createElement('div')
+                modal.style.cssText = `
+                    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                    background: rgba(0,0,0,0.5); z-index: 1000;
+                    display: flex; align-items: center; justify-content: center;
+                `
+                modal.innerHTML = `
+                    <div style="background: white; padding: 20px; border-radius: 8px; max-width: 80%; max-height: 80%; overflow: auto;">
+                        ${html}
+                        <button class="btn" onclick="this.closest('div').parentElement.remove()" style="margin-top: 15px;">关闭</button>
+                    </div>
+                `
+                
+                document.body.appendChild(modal)
+            } catch (error) {
+                showMessage('获取表结构失败: ' + (error.response?.data?.message || error.message), 'danger')
+            }
+        }
+
+        // 显示添加字段区域
+        function showAddColumnSection(tableName) {
+            currentTable = tableName
+            document.getElementById('currentTableName').textContent = tableName
+            document.getElementById('addColumnSection').style.display = 'block'
+            document.getElementById('addColumnForm').reset()
+        }
+
+        // 隐藏添加字段区域
+        function hideAddColumnSection() {
+            document.getElementById('addColumnSection').style.display = 'none'
+            currentTable = ''
+        }
+
+        // 添加字段到现有表
+        document.getElementById('addColumnForm').addEventListener('submit', async function(e) {
+            e.preventDefault()
+            
+            const formData = new FormData(this)
+            const columnData = {
+                columnName: formData.get('columnName'),
+                dataType: formData.get('dataType'),
+                isNullable: formData.get('isNullable'),
+                defaultValue: formData.get('defaultValue'),
+                comment: formData.get('comment'),
+                length: formData.get('length')
+            }
+            
+            try {
+                const response = await axios.post(`${API_BASE}/${currentTable}/columns`, columnData)
+                showMessage('字段添加成功!')
+                hideAddColumnSection()
+            } catch (error) {
+                showMessage('添加字段失败: ' + (error.response?.data?.message || error.message), 'danger')
+            }
+        })
+
+        // 删除表
+        async function deleteTable(tableName) {
+            if (!confirm(`确定要删除表 "${tableName}" 吗？此操作不可恢复！`)) {
+                return
+            }
+            
+            try {
+                await axios.delete(`${API_BASE}/${tableName}`)
+                showMessage('表删除成功!')
+                loadTables()
+            } catch (error) {
+                showMessage('删除表失败: ' + (error.response?.data?.message || error.message), 'danger')
+            }
+        }
+
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            addColumn() // 默认添加一个字段
+            loadTables()
+        })
+    </script>
+</body>
+</html>
